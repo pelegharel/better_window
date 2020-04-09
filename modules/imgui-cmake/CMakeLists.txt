@@ -18,6 +18,7 @@ list(APPEND IMGUI_PRIVATE_HEADERS
         "${IMGUI_SRC_DIR}/imgui.cpp"
         "${IMGUI_SRC_DIR}/imgui_draw.cpp"
         "${IMGUI_SRC_DIR}/imgui_demo.cpp"
+        "${IMGUI_SRC_DIR}/imgui_widgets.cpp"
         ${CRYPTO_PUBLIC_HEADERS}
         ${CRYPTO_PRIVATE_HEADERS}
         )

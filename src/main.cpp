@@ -17,13 +17,14 @@
 #include <algorithm>
 #include <array>
 #include <functional>
+#include <iostream>
 #include <memory>
 #include <stdio.h>
 #include <tuple>
 #include <type_traits>
 
 static void glfw_error_callback(int error, const char *description) {
-  fprintf(stderr, "Glfw Error %d: %s\n", error, description);
+  std::cerr << "Glfw Error " << error << ':' << description << '\n';
 }
 
 struct ImguiContext_glfw_opengl {
@@ -123,68 +124,68 @@ void main_loop(ImguiContext_glfw_opengl &context) {
       // 1. Show a simple window.
       // Tip: if we don't call ImGui::Begin()/ImGui::End() the widgets
       // automatically appears in a window called "Debug".
-      [&ns, s] {
-        ImGui::Text("Hello, world!"); // Display some text (you can use a format
-                                      // string too)
-        ImGui::SliderFloat(
-            "float", &ns.f, 0.0f,
-            1.0f); // Edit 1 float using a slider from 0.0f to 1.0f
-        ImGui::ColorEdit3(
-            "clear color",
-            (float *)&ns.clear_color); // Edit 3 floats representing a color
-
-        ImGui::Text("Windows");
-        ImGui::Checkbox("Demo Window",
-                        &ns.show_demo_window); // Edit bools storing our windows
-                                               // open/close state
-        ImGui::Checkbox("Themes Window",
-                        &ns.show_theme_window); // Edit bools storing our
-                                                // windows open/close state
-        ImGui::Checkbox("Another Window", &ns.show_another_window);
-
-        if (ImGui::Button("Button")) {
-          ns.counter++;
-        }
-        ImGui::SameLine();
-        ImGui::Text("counter = %d", s.counter);
-
-        ImGui::Text("Application average %.3f ms/frame (%.1f FPS)",
-                    1000.0f / ImGui::GetIO().Framerate,
-                    ImGui::GetIO().Framerate);
-      }();
-
-      // 2. Show another simple window. In most cases you will use an explicit
-      // Begin/End pair to name your windows.
-      if (s.show_another_window) {
-        ImGui::Begin("Another Window", &ns.show_another_window);
-        ImGui::Text("Hello from another window!");
-        if (ImGui::Button("Close Me")) {
-          ns.show_another_window = false;
-        }
-        ImGui::End();
-      }
-
-      // 3. Show theme window
-      if (s.show_theme_window) {
-        ImGui::Begin("Themes", &ns.show_theme_window);
-        {
-          const std::array themes = {"Light", "Dark", "Default"};
-
-          constexpr std::array<void (*)(ImGuiStyle *), size(themes)> funcs{
-              {ImGui::StyleColorsLight, ImGui::StyleColorsDark,
-               ImGui::StyleColorsClassic}};
-
-          ImGui::Combo("theme-combo", &ns.theme_current, themes.data(),
-                       themes.size());
-
-          funcs[s.theme_current](nullptr);
-        }
-
-        ImGui::End();
-      }
-
-      // 4. Show the ImGui demo window. Most of the sample code is in
-      // ImGui::ShowDemoWindow(). Read its code to learn more about Dear ImGui!
+//      [&ns, s] {
+//        ImGui::Text("Hello, world!"); // Display some text (you can use a format
+//                                      // string too)
+//        ImGui::SliderFloat(
+//            "float", &ns.f, 0.0f,
+//            1.0f); // Edit 1 float using a slider from 0.0f to 1.0f
+//        ImGui::ColorEdit3(
+//            "clear color",
+//            (float *)&ns.clear_color); // Edit 3 floats representing a color
+//
+//        ImGui::Text("Windows");
+//        ImGui::Checkbox("Demo Window",
+//                        &ns.show_demo_window); // Edit bools storing our windows
+//                                               // open/close state
+//        ImGui::Checkbox("Themes Window",
+//                        &ns.show_theme_window); // Edit bools storing our
+//                                                // windows open/close state
+//        ImGui::Checkbox("Another Window", &ns.show_another_window);
+//
+//        if (ImGui::Button("Button")) {
+//          ns.counter++;
+//        }
+//        ImGui::SameLine();
+//        ImGui::Text("counter = %d", s.counter);
+//
+//        ImGui::Text("Application average %.3f ms/frame (%.1f FPS)",
+//                    1000.0f / ImGui::GetIO().Framerate,
+//                    ImGui::GetIO().Framerate);
+//      }();
+//
+//      // 2. Show another simple window. In most cases you will use an explicit
+//      // Begin/End pair to name your windows.
+//      if (s.show_another_window) {
+//        ImGui::Begin("Another Window", &ns.show_another_window);
+//        ImGui::Text("Hello from another window!");
+//        if (ImGui::Button("Close Me")) {
+//          ns.show_another_window = false;
+//        }
+//        ImGui::End();
+//      }
+//
+//      // 3. Show theme window
+//      if (s.show_theme_window) {
+//        ImGui::Begin("Themes", &ns.show_theme_window);
+//        {
+//          const std::array themes = {"Light", "Dark", "Default"};
+//
+//          constexpr std::array<void (*)(ImGuiStyle *), size(themes)> funcs{
+//              {ImGui::StyleColorsLight, ImGui::StyleColorsDark,
+//               ImGui::StyleColorsClassic}};
+//
+//          ImGui::Combo("theme-combo", &ns.theme_current, themes.data(),
+//                       themes.size());
+//
+//          funcs[s.theme_current](nullptr);
+//        }
+//
+//        ImGui::End();
+//      }
+//
+//      // 4. Show the ImGui demo window. Most of the sample code is in
+//      // ImGui::ShowDemoWindow(). Read its code to learn more about Dear ImGui!
       if (s.show_demo_window) {
         ImGui::ShowDemoWindow(&ns.show_demo_window);
       }
