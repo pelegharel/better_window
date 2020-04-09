@@ -29,7 +29,7 @@ static void glfw_error_callback(int error, const char *description) {
 struct ImguiContext_glfw_opengl {
   GLFWwindow *window = nullptr;
 
-  ImguiContext_glfw_opengl() {
+  ImguiContext_glfw_opengl(int width, int height, const char *win_name) {
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit()) {
       exit(1);
@@ -37,8 +37,7 @@ struct ImguiContext_glfw_opengl {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    window = glfwCreateWindow(1280, 720, "ImGui GLFW+OpenGL3 example", nullptr,
-                              nullptr);
+    window = glfwCreateWindow(width, height, win_name, nullptr, nullptr);
 
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);
@@ -199,7 +198,7 @@ void main_loop(ImguiContext_glfw_opengl &context) {
 
 int main(int, char **) {
 
-  ImguiContext_glfw_opengl context;
+  ImguiContext_glfw_opengl context(1280, 720, "Better window");
 
   main_loop(context);
 
