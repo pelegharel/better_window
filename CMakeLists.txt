@@ -1,10 +1,10 @@
 
-cmake_minimum_required (VERSION 2.6)
-project (imgui-glfw)
+cmake_minimum_required(VERSION 3.11)
 
-set(CMAKE_CXX_STANDARD 14)
+project(better_window LANGUAGES CXX VERSION 0.0.1)
 
-set(CMAKE_BUILD_TYPE "Debug")
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_definitions("-DCPP_SRC_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/\"")
 
