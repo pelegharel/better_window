@@ -116,7 +116,6 @@ void main_loop(ImguiContext_glfw_opengl &context) {
 }
 
 int main(int, char **) {
-
   ImguiContext_glfw_opengl context(1280, 720, "Better window");
 
   main_loop(context);
