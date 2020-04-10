@@ -14,8 +14,8 @@ set(MAIN_APP_LIBRARIES imgui glfw)
 
 list(APPEND MAIN_APP_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR})
 
-set(NAME imgui-glfw)
+set(NAME better_window)
 add_executable(${NAME} ${MAIN_APP_SOURCES})
 target_include_directories(${NAME} PUBLIC ${MAIN_APP_INCLUDE_DIRS})
-target_link_libraries(${NAME} ${MAIN_APP_LIBRARIES})
+target_link_libraries(${NAME} imgui glfw)
 
