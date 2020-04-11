@@ -6,109 +6,80 @@
 // there is no standard header to access modern OpenGL functions easily.
 // Alternatives are GLEW, Glad, etc.)
 
-#include "imgui.h"
-#include "imgui_impl/imgui_impl_glfw.h"
-#include "imgui_impl/imgui_impl_opengl3.h"
+#include "imgui_opengl.h"
 
-#include <glad/glad.h>
-
-#include <GLFW/glfw3.h>
+#include "opencv2/core/core.hpp"
+#include "opencv2/imgcodecs.hpp"
+#include "opencv2/imgproc.hpp"
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <functional>
 #include <iostream>
 #include <memory>
 #include <stdio.h>
 #include <tuple>
 #include <type_traits>
-#include <cmath>
+#include <vector>
 
-static void glfw_error_callback(int error, const char *description) {
-  std::cerr << "Glfw Error " << error << ':' << description << '\n';
+GLuint load_to_opengl(const cv::Mat &image) {
+
+  GLuint texture;
+
+  glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+  glGenTextures(1, &texture);
+  glBindTexture(GL_TEXTURE_2D, texture);
+
+  glPixelStorei(GL_UNPACK_ROW_LENGTH, image.step / image.elemSize());
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, image.cols, image.rows, 0, GL_BGR,
+               GL_UNSIGNED_BYTE, image.ptr());
+
+  return texture;
 }
 
-struct ImguiContext_glfw_opengl {
-  GLFWwindow *window = nullptr;
+void main_loop(btw::ImguiContext_glfw_opengl &context) {
 
-  ImguiContext_glfw_opengl(int width, int height, const char *win_name) {
-    glfwSetErrorCallback(glfw_error_callback);
-    if (!glfwInit()) {
-      exit(1);
-    }
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    window = glfwCreateWindow(width, height, win_name, nullptr, nullptr);
+  cv::Mat m = cv::imread("MyImage01.jpg", cv::IMREAD_COLOR);
+  auto gl_m = load_to_opengl(m);
 
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(1);
-
-    gladLoadGL((GLADloadfunc)glfwGetProcAddress);
-
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init();
-  }
-
-  ImguiContext_glfw_opengl(const ImguiContext_glfw_opengl &) = delete;
-  ImguiContext_glfw_opengl(ImguiContext_glfw_opengl &&) = delete;
-  ImguiContext_glfw_opengl &
-  operator=(const ImguiContext_glfw_opengl &) = delete;
-
-  ImguiContext_glfw_opengl &operator=(ImguiContext_glfw_opengl &&) = delete;
-
-  void render(ImVec4 clear_color) {
-    ImGui::Render();
-    glfwMakeContextCurrent(window);
-
-    const auto [display_w, display_h] = [&] {
-      int display_w;
-      int display_h;
-      glfwGetFramebufferSize(window, &display_w, &display_h);
-      return std::tuple{display_w, display_h};
-    }();
-
-    const auto [x, y, z, w] = clear_color;
-    glViewport(0, 0, display_w, display_h);
-    glClearColor(x, y, z, w);
-    glClear(GL_COLOR_BUFFER_BIT);
-
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
-    glfwMakeContextCurrent(window);
-    glfwSwapBuffers(window);
-  }
-
-  bool is_window_open() const { return !glfwWindowShouldClose(window); }
-
-  void start_frame() {
-    ImGui_ImplOpenGL3_NewFrame();
-    ImGui_ImplGlfw_NewFrame();
-    ImGui::NewFrame();
-    glfwPollEvents();
-  }
-  ~ImguiContext_glfw_opengl() {
-    glfwDestroyWindow(window);
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
-
-    glfwTerminate();
-  }
-};
-
-void main_loop(ImguiContext_glfw_opengl &context) {
+  std::vector<cv::Rect> areas;
 
   while (context.is_window_open()) {
     context.start_frame();
 
     {
-      ImGui::PlotLines(
-          "Sin", [](void *data, int idx) { return sinf(idx * 0.2F); }, nullptr,
-          100);
+      ImGui::Begin("image", nullptr, ImGuiWindowFlags_NoMove);
+      ImGui::Image((void *)(intptr_t)gl_m, ImVec2(m.cols, m.rows));
+
+      auto *draw_list = ImGui::GetWindowDrawList();
+
+      if (ImGui::IsItemHovered()) {
+        const auto [x0, y0] = ImGui::GetMousePos();
+        const auto [dx, dy] = ImGui::GetMouseDragDelta();
+
+        draw_list->AddRectFilled({x0 - dx, y0 - dy}, {x0, y0},
+                                 ImGui::GetColorU32({1, 1, 1, 0.5}));
+
+        if (ImGui::IsMouseReleased(0)) {
+          areas.emplace_back(cv::Point(x0 - dx, y0 - dy), cv::Point(x0, y0));
+        }
+      }
+
+      for (const auto &rect : areas) {
+        const auto [x_0, y_0] = rect.tl();
+        const auto [x_1, y_1] = rect.br();
+        draw_list->AddRectFilled({x_0, y_0}, {x_1, y_1},
+                                 ImGui::GetColorU32({0, 1, 0, 0.5}));
+      }
+      ImGui::End();
     }
+
     ImGui::ShowDemoWindow();
 
     context.render({0, 0, 0, 0});
@@ -116,7 +87,7 @@ void main_loop(ImguiContext_glfw_opengl &context) {
 }
 
 int main(int, char **) {
-  ImguiContext_glfw_opengl context(1280, 720, "Better window");
+  btw::ImguiContext_glfw_opengl context(1280, 720, "Better window");
 
   main_loop(context);
 
