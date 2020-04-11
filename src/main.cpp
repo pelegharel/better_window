@@ -48,11 +48,13 @@ void main_loop(btw::ImguiContext_glfw_opengl &context) {
   cv::Mat m = cv::imread("MyImage01.jpg", cv::IMREAD_COLOR);
   auto gl_m = load_to_opengl(m);
 
-  std::vector<cv::Rect> areas;
+  std::vector<cv::Rect> screen_rects;
 
   while (context.is_window_open()) {
     context.start_frame();
 
+    const auto [m_x, m_y] = ImGui::GetCursorStartPos();
+    ImGui::Text("rect_min %f, %f", m_x, m_y);
     {
       ImGui::Begin("image", nullptr, ImGuiWindowFlags_NoMove);
       ImGui::Image((void *)(intptr_t)gl_m, ImVec2(m.cols, m.rows));
@@ -67,16 +69,28 @@ void main_loop(btw::ImguiContext_glfw_opengl &context) {
                                  ImGui::GetColorU32({1, 1, 1, 0.5}));
 
         if (ImGui::IsMouseReleased(0)) {
-          areas.emplace_back(cv::Point(x0 - dx, y0 - dy), cv::Point(x0, y0));
+          screen_rects.emplace_back(cv::Point(x0 - dx, y0 - dy),
+                                    cv::Point(x0, y0));
         }
       }
 
-      for (const auto &rect : areas) {
+      if (ImGui::IsMouseDoubleClicked(0) && ImGui::IsItemClicked()) {
+        auto upmost_clicked =
+            std::find_if(rbegin(screen_rects), rend(screen_rects),
+                         [pos = ImGui::GetMousePos()](const auto &rect) {
+                           const auto [x, y] = pos;
+                           return rect.contains({x, y});
+                         });
+        screen_rects.erase(std::next(upmost_clicked).base());
+      }
+
+      for (const auto &rect : screen_rects) {
         const auto [x_0, y_0] = rect.tl();
         const auto [x_1, y_1] = rect.br();
         draw_list->AddRectFilled({x_0, y_0}, {x_1, y_1},
                                  ImGui::GetColorU32({0, 1, 0, 0.5}));
       }
+
       ImGui::End();
     }
 
