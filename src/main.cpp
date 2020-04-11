@@ -23,44 +23,71 @@
 #include <type_traits>
 #include <vector>
 
-GLuint load_to_opengl(const cv::Mat &image) {
+struct GLTexture {
+  GLuint id = 0;
+  explicit GLTexture(const cv::Mat &image) {
 
-  GLuint texture;
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+    glGenTextures(1, &id);
+    glBindTexture(GL_TEXTURE_2D, id);
 
-  glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
-  glGenTextures(1, &texture);
-  glBindTexture(GL_TEXTURE_2D, texture);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, image.step / image.elemSize());
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
 
-  glPixelStorei(GL_UNPACK_ROW_LENGTH, image.step / image.elemSize());
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, image.cols, image.rows, 0, GL_BGR,
+                 GL_UNSIGNED_BYTE, image.ptr());
+  }
 
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, image.cols, image.rows, 0, GL_BGR,
-               GL_UNSIGNED_BYTE, image.ptr());
+  GLTexture(const GLTexture &) = delete;
+  GLTexture(GLTexture &&) = delete;
+  GLTexture &operator=(const GLTexture &) = delete;
+  GLTexture &operator=(GLTexture &&) = delete;
 
-  return texture;
-}
+  ~GLTexture() {
+    if (id) {
+      glDeleteTextures(1, &id);
+    }
+  }
+};
 
 void main_loop(btw::ImguiContext_glfw_opengl &context) {
 
-  cv::Mat m = cv::imread("MyImage01.jpg", cv::IMREAD_COLOR);
-  auto gl_m = load_to_opengl(m);
+  ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
 
-  std::vector<cv::Rect> screen_rects;
+  cv::Mat m = cv::imread("MyImage01.jpg", cv::IMREAD_COLOR);
+  auto gl_m = GLTexture(m);
+
+  std::vector<std::tuple<cv::Rect, cv::Mat, std::unique_ptr<GLTexture>>>
+      im_rects;
 
   while (context.is_window_open()) {
     context.start_frame();
+    ImGui::ShowMetricsWindow();
 
-    const auto [m_x, m_y] = ImGui::GetCursorStartPos();
-    ImGui::Text("rect_min %f, %f", m_x, m_y);
     {
-      ImGui::Begin("image", nullptr, ImGuiWindowFlags_NoMove);
-      ImGui::Image((void *)(intptr_t)gl_m, ImVec2(m.cols, m.rows));
+      ImGui::Begin("image", nullptr, ImGuiWindowFlags_NoSavedSettings);
+
+      ImGui::Image((void *)(intptr_t)gl_m.id, ImVec2(m.cols, m.rows));
+
+      const auto [a, b] = ImGui::GetItemRectMin();
 
       auto *draw_list = ImGui::GetWindowDrawList();
 
+      if (ImGui::IsMouseDoubleClicked(0) && ImGui::IsItemClicked()) {
+        if (auto upmost_clicked = std::find_if(
+                rbegin(im_rects), rend(im_rects),
+                [pos = ImGui::GetMousePos(), a, b](const auto &datum) {
+                  const auto &[rect, _1, _2] = datum;
+                  const auto [x, y] = pos;
+                  return rect.contains({x - a, y - b});
+                });
+            upmost_clicked != rend(im_rects)) {
+          im_rects.erase(std::next(upmost_clicked).base());
+        }
+      }
       if (ImGui::IsItemHovered()) {
         const auto [x0, y0] = ImGui::GetMousePos();
         const auto [dx, dy] = ImGui::GetMouseDragDelta();
@@ -68,33 +95,40 @@ void main_loop(btw::ImguiContext_glfw_opengl &context) {
         draw_list->AddRectFilled({x0 - dx, y0 - dy}, {x0, y0},
                                  ImGui::GetColorU32({1, 1, 1, 0.5}));
 
-        if (ImGui::IsMouseReleased(0)) {
-          screen_rects.emplace_back(cv::Point(x0 - dx, y0 - dy),
-                                    cv::Point(x0, y0));
+        const cv::Rect im_rect(cv::Point(x0 - dx - a, y0 - dy - b),
+                               cv::Point(x0 - a, y0 - b));
+
+        const bool is_in_m =
+            (im_rect & cv::Rect(0, 0, m.cols, m.rows)) == im_rect;
+
+        if (ImGui::IsMouseReleased(0) && std::abs(dx) > 10 && is_in_m) {
+          const cv::Mat sub_img = m(im_rect);
+
+          im_rects.push_back(
+              {im_rect, sub_img, std::make_unique<GLTexture>(sub_img)});
         }
       }
 
-      if (ImGui::IsMouseDoubleClicked(0) && ImGui::IsItemClicked()) {
-        auto upmost_clicked =
-            std::find_if(rbegin(screen_rects), rend(screen_rects),
-                         [pos = ImGui::GetMousePos()](const auto &rect) {
-                           const auto [x, y] = pos;
-                           return rect.contains({x, y});
-                         });
-        screen_rects.erase(std::next(upmost_clicked).base());
-      }
-
-      for (const auto &rect : screen_rects) {
+      for (const auto &[rect, _1, _2] : im_rects) {
         const auto [x_0, y_0] = rect.tl();
         const auto [x_1, y_1] = rect.br();
-        draw_list->AddRectFilled({x_0, y_0}, {x_1, y_1},
+        draw_list->AddRectFilled({a + x_0, b + y_0}, {a + x_1, b + y_1},
                                  ImGui::GetColorU32({0, 1, 0, 0.5}));
       }
 
       ImGui::End();
     }
 
-    ImGui::ShowDemoWindow();
+    for (const auto &[rect, sub, gl_mat] : im_rects) {
+
+      ImGui::Value("v", gl_mat->id);
+      ImGui::Image((void *)(intptr_t)gl_mat->id, ImVec2(sub.cols, sub.rows));
+      [rect] {
+        const auto [a, b] = rect.tl();
+        const auto [c, d] = rect.br();
+        ImGui::Text("rect %d, %d, %d, %d", a, b, c, d);
+      }();
+    }
 
     context.render({0, 0, 0, 0});
   }
