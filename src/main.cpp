@@ -9,6 +9,7 @@
 #include "imgui_opengl.h"
 
 #include "opencv2/core/core.hpp"
+#include "opencv2/dnn/dnn.hpp"
 #include "opencv2/imgcodecs.hpp"
 #include "opencv2/imgproc.hpp"
 #include "opencv2/videoio.hpp"
@@ -26,17 +27,26 @@
 
 struct GLTexture {
   GLuint id = 0;
-  explicit GLTexture(const cv::Mat &image) {
+  int width;
+  int height;
+
+  explicit GLTexture(const cv::Mat &image)
+      : width(image.cols), height(image.rows) {
 
     glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
     glGenTextures(1, &id);
     glBindTexture(GL_TEXTURE_2D, id);
 
     glPixelStorei(GL_UNPACK_ROW_LENGTH, image.step / image.elemSize());
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+
+    constexpr std::array params{std::tuple{GL_TEXTURE_MIN_FILTER, GL_NEAREST},
+                                std::tuple{GL_TEXTURE_MAG_FILTER, GL_LINEAR},
+                                std::tuple{GL_TEXTURE_WRAP_S, GL_CLAMP},
+                                std::tuple{GL_TEXTURE_WRAP_T, GL_CLAMP}};
+
+    for (const auto &[p_name, p_value] : params) {
+      glTexParameteri(GL_TEXTURE_2D, p_name, p_value);
+    }
 
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, image.cols, image.rows, 0, GL_BGR,
                  GL_UNSIGNED_BYTE, image.ptr());
@@ -54,13 +64,45 @@ struct GLTexture {
   }
 };
 
-void main_loop(btw::ImguiContext_glfw_opengl &context) {
+namespace ImGui {
+void Image(const GLTexture &texture) {
+
+  ImGui::Image((void *)(intptr_t)texture.id,
+               ImVec2(texture.width, texture.height));
+}
+} // namespace ImGui
+
+void face_detect(const cv::Mat &frame, const GLTexture &frame_texture,
+                 cv::dnn::Net &n) {
+  cv::Size s(300, 300);
+
+  cv::Mat resized;
+  cv::resize(frame, resized, s);
+  const auto blob =
+      cv::dnn::blobFromImage(resized, 1.0, s, cv::Scalar(104, 177, 123));
+
+  n.setInput(blob);
+
+  const auto detections = n.forward();
+
+  {
+    ImGui::Begin("Face detect");
+    ImGui::Value("dims", detections.dims);
+    ImGui::Image(frame_texture);
+    ImGui::End();
+  }
+}
+void main_loop(btw::ImguiContext_glfw_opengl &context, cv::dnn::Net &n) {
 
   cv::VideoCapture cap;
   cap.open(
       R"(/media/peleg/AAC8C7F7C8C7BFB5/downloads/Better.Call.Saul.S05E06.WEBRip.x264-ION10.mp4)");
   const auto frame_count = cap.get(cv::CAP_PROP_FRAME_COUNT);
+
   cv::Mat frame;
+  if(!cap.read(frame)){
+	  return;
+  }
 
   ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
 
@@ -69,12 +111,12 @@ void main_loop(btw::ImguiContext_glfw_opengl &context) {
       im_rects_s(frame_count);
 
   int frame_old = 0;
+  int frame_i = 0;
   while (context.is_window_open()) {
     context.start_frame();
     ImGui::ShowMetricsWindow();
 
     ImGui::Begin("image", nullptr, ImGuiWindowFlags_NoSavedSettings);
-    int frame_i;
     ImGui::SliderInt("slider", &frame_i, 0, frame_count - 1);
     auto &im_rects = im_rects_s[frame_i];
 
@@ -105,6 +147,7 @@ void main_loop(btw::ImguiContext_glfw_opengl &context) {
     }
     auto m = frame;
     const GLTexture gl_m(frame);
+    face_detect(frame, gl_m, n);
 
     ImGui::Text("%d", gl_m.id);
 
@@ -175,10 +218,13 @@ void main_loop(btw::ImguiContext_glfw_opengl &context) {
 }
 
 int main(int, char **) {
+  cv::dnn::Net n = cv::dnn::readNetFromCaffe(
+      R"(/media/peleg/AAC8C7F7C8C7BFB5/deep_learning_tut/deep-learning-face-detection/deploy.prototxt.txt)",
+      R"(/media/peleg/AAC8C7F7C8C7BFB5/deep_learning_tut/deep-learning-face-detection/res10_300x300_ssd_iter_140000.caffemodel)");
 
   btw::ImguiContext_glfw_opengl context(1280, 720, "Better window");
 
-  main_loop(context);
+  main_loop(context, n);
 
   return 0;
 }
