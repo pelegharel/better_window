@@ -75,6 +75,7 @@ void Image(const GLTexture &texture) {
 void face_detect(const cv::Mat &frame, const GLTexture &frame_texture,
                  cv::dnn::Net &n) {
 
+  ImGui::Begin("Face detect");
   const auto detections = [&n, &frame] {
     cv::Size s(300, 300);
 
@@ -84,49 +85,45 @@ void face_detect(const cv::Mat &frame, const GLTexture &frame_texture,
         cv::dnn::blobFromImage(resized, 1.0, s, cv::Scalar(104, 177, 123));
 
     n.setInput(blob);
-    return n.forward();
+    const cv::Mat detected = n.forward();
+    return detected(std::vector{cv::Range(0, 1), cv::Range(0, 1),
+                                cv::Range::all(), cv::Range::all()})
+        .reshape(0, std::vector{detected.size[2], detected.size[3]});
   }();
-  const auto s = detections.size;
-  ImGui::Text("sizes: (%d, %d, %d, %d)", s[0], s[1], s[2], s[3]);
 
-  const auto mm = detections(std::vector{cv::Range(0, 1), cv::Range(0, 1),
-                                         cv::Range::all(), cv::Range::all()})
-                      .reshape(0, std::vector{s[2], s[3]});
+  static float conf_thresh = 0.5;
+  ImGui::SliderFloat("Conf Thresh", &conf_thresh, 0, 1);
 
-  const auto dt = [&mm] {
+  const auto dt = [&detections, conf_thresh] {
     std::vector<std::array<float, 4>> dt;
 
-    for (int r = 0; r < mm.rows; ++r) {
-      const auto row = mm.row(r);
+    for (int r = 0; r < detections.rows; ++r) {
+      const auto row = detections.row(r);
       const auto conf = row.at<float>(2);
-      if (conf > 0.5) {
+      if (conf > conf_thresh) {
         std::array<float, 4> rect;
-        for (int j = 3; j < 7; ++j) {
-          rect[j - 3] = row.at<float>(j);
-        }
+        std::copy_n(row.ptr<float>(0, 3), 4, begin(rect));
         dt.push_back(rect);
       }
     }
     return dt;
   }();
 
-  {
-    ImGui::Begin("Face detect");
-    ImGui::Text("toal dec %ld", size(dt));
+  ImGui::Text("toal dec %ld", size(dt));
 
-    auto *const draw_list = ImGui::GetWindowDrawList();
+  auto *const draw_list = ImGui::GetWindowDrawList();
 
-    ImGui::Image(frame_texture);
-    const auto [a0, b0] = ImGui::GetItemRectMin();
+  ImGui::Image(frame_texture);
+  const auto [a0, b0] = ImGui::GetItemRectMin();
 
-    for (const auto [a, b, c, d] : dt) {
-      ImGui::Text("%f, %f, %f, %f", a, b, c, d);
-      draw_list->AddRectFilled({a0 + frame.cols * a, b0 + frame.rows * b},
-                               {a0 + frame.cols * c, b0 + frame.rows * d},
-                               ImGui::GetColorU32({0, 0, 1, 0.2}));
-    }
-    ImGui::End();
+  for (const auto [a, b, c, d] : dt) {
+    ImGui::Text("%f, %f, %f, %f", a, b, c, d);
+    draw_list->AddRectFilled({a0 + frame.cols * a, b0 + frame.rows * b},
+                             {a0 + frame.cols * c, b0 + frame.rows * d},
+                             ImGui::GetColorU32({0, 0, 1, 0.2}));
   }
+
+  ImGui::End();
 }
 void main_loop(btw::ImguiContext_glfw_opengl &context, cv::dnn::Net &n) {
 
