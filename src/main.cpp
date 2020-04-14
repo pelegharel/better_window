@@ -72,10 +72,10 @@ void Image(const GLTexture &texture) {
 }
 } // namespace ImGui
 
-void face_detect(const cv::Mat &frame, const GLTexture &frame_texture,
-                 cv::dnn::Net &n) {
+[[nodiscard]] auto face_detect(const cv::Mat &frame,
+                               const GLTexture &frame_texture, cv::dnn::Net &n)
+    -> std::vector<std::unique_ptr<GLTexture>> {
 
-  ImGui::Begin("Face detect");
   const auto detections = [&n, &frame] {
     cv::Size s(300, 300);
 
@@ -117,13 +117,29 @@ void face_detect(const cv::Mat &frame, const GLTexture &frame_texture,
   const auto [a0, b0] = ImGui::GetItemRectMin();
 
   for (const auto [a, b, c, d] : dt) {
-    ImGui::Text("%f, %f, %f, %f", a, b, c, d);
     draw_list->AddRectFilled({a0 + frame.cols * a, b0 + frame.rows * b},
                              {a0 + frame.cols * c, b0 + frame.rows * d},
                              ImGui::GetColorU32({0, 0, 1, 0.2}));
   }
 
+  ImGui::Begin("Faces");
+
+  std::vector<std::unique_ptr<GLTexture>> res;
+
+  for (const auto [a, b, c, d] : dt) {
+    const cv::Rect roi(cv::Point(frame.cols * a, frame.rows * b),
+                       cv::Point(frame.cols * c, frame.rows * d));
+
+    if ((roi & cv::Rect(0, 0, frame.cols, frame.rows)) == roi) {
+      const cv::Mat face = frame(roi);
+      res.emplace_back(std::make_unique<GLTexture>(face));
+      ImGui::Image(*res.back());
+    }
+  }
+
   ImGui::End();
+
+  return res;
 }
 void main_loop(btw::ImguiContext_glfw_opengl &context, cv::dnn::Net &n) {
 
@@ -153,26 +169,6 @@ void main_loop(btw::ImguiContext_glfw_opengl &context, cv::dnn::Net &n) {
     ImGui::SliderInt("slider", &frame_i, 0, frame_count - 1);
     auto &im_rects = im_rects_s[frame_i];
 
-    ImGui::SameLine();
-    if (ImGui::ArrowButton("<", ImGuiDir_Left)) {
-      if (const auto non_empty = std::find_if(
-              rbegin(im_rects_s) + (size(im_rects_s) - frame_i),
-              rend(im_rects_s), [](const auto &v) { return !v.empty(); });
-          non_empty != rend(im_rects_s)) {
-        frame_i =
-            size(im_rects_s) - std::distance(rbegin(im_rects_s), non_empty) - 1;
-      }
-    }
-    ImGui::SameLine();
-    if (ImGui::ArrowButton(">", ImGuiDir_Right)) {
-      if (const auto non_empty =
-              std::find_if(next(begin(im_rects_s) + frame_i), end(im_rects_s),
-                           [](const auto &v) { return !v.empty(); });
-          non_empty != end(im_rects_s)) {
-        frame_i = std::distance(begin(im_rects_s), non_empty);
-      }
-    }
-
     if (frame_i != frame_old) {
       cap.set(cv::CAP_PROP_POS_FRAMES, frame_i);
       cap.read(frame);
@@ -180,71 +176,10 @@ void main_loop(btw::ImguiContext_glfw_opengl &context, cv::dnn::Net &n) {
     }
     auto m = frame;
     const GLTexture gl_m(frame);
-    face_detect(frame, gl_m, n);
 
-    ImGui::Text("%d", gl_m.id);
-
-    ImGui::Image((void *)(intptr_t)gl_m.id, ImVec2(m.cols, m.rows));
-
-    const auto [a, b] = ImGui::GetItemRectMin();
-
-    auto *draw_list = ImGui::GetWindowDrawList();
-
-    if (ImGui::IsMouseDoubleClicked(0) && ImGui::IsItemClicked()) {
-      if (auto upmost_clicked = std::find_if(
-              rbegin(im_rects), rend(im_rects),
-              [pos = ImGui::GetMousePos(), a, b](const auto &datum) {
-                const auto &[rect, _1, _2] = datum;
-                const auto [x, y] = pos;
-                return rect.contains({x - a, y - b});
-              });
-          upmost_clicked != rend(im_rects)) {
-        im_rects.erase(std::next(upmost_clicked).base());
-      }
-    }
-    if (ImGui::IsItemHovered()) {
-      const auto [x0, y0] = ImGui::GetMousePos();
-      const auto [dx, dy] = ImGui::GetMouseDragDelta();
-
-      draw_list->AddRectFilled({x0 - dx, y0 - dy}, {x0, y0},
-                               ImGui::GetColorU32({1, 1, 1, 0.5}));
-
-      const cv::Rect im_rect(cv::Point(x0 - dx - a, y0 - dy - b),
-                             cv::Point(x0 - a, y0 - b));
-
-      const bool is_in_m =
-          (im_rect & cv::Rect(0, 0, m.cols, m.rows)) == im_rect;
-
-      if (ImGui::IsMouseReleased(0) && std::abs(dx) > 10 && is_in_m) {
-        const cv::Mat sub_img = m(im_rect);
-
-        im_rects.push_back(
-            {im_rect, sub_img, std::make_unique<GLTexture>(sub_img)});
-      }
-    }
-
-    for (const auto &[rect, _1, _2] : im_rects) {
-      const auto [x_0, y_0] = rect.tl();
-      const auto [x_1, y_1] = rect.br();
-      draw_list->AddRectFilled({a + x_0, b + y_0}, {a + x_1, b + y_1},
-                               ImGui::GetColorU32({0, 1, 0, 0.5}));
-    }
+    const auto face_textures = face_detect(frame, gl_m, n);
 
     ImGui::End();
-    {
-      ImGui::Begin("Selected");
-      for (const auto &[rect, sub, gl_mat] : im_rects) {
-
-        ImGui::Value("v", gl_mat->id);
-        ImGui::Image((void *)(intptr_t)gl_mat->id, ImVec2(sub.cols, sub.rows));
-        [rect] {
-          const auto [a, b] = rect.tl();
-          const auto [c, d] = rect.br();
-          ImGui::Text("rect %d, %d, %d, %d", a, b, c, d);
-        }();
-      }
-      ImGui::End();
-    }
 
     context.render({0, 0, 0, 0});
   }
